@@ -1,97 +1,130 @@
 ---
-name: typescript-engineering
-description: Rules for writing, modifying, refactoring, or reviewing TypeScript (.ts, .tsx, .mts, .cts) in any project. Use this skill whenever you touch TypeScript code, add a dependency, parse or validate external data (API responses, request bodies, env/config, file contents), or are asked to review TypeScript, even for small edits. Contains hard checkpoints where you must ask the user before proceeding.
-license: MIT
+name: typescript-readability
+description: Makes TypeScript code easy to read and maintain. Use this skill whenever you write, modify, refactor, or review TypeScript (.ts, .tsx, .mts, .cts), even for small edits. Covers naming, function shape, control flow, comments, abstraction level, and type-level clarity, with concrete before/after patterns.
 ---
 
-# TypeScript Engineering
+# TypeScript Readability
 
-General good-practice (readability, naming, simplicity, `const` by default) is assumed. This skill covers only what is easy to get wrong.
+The goal: a competent reader understands each function on the first pass, without scrolling or decoding.
 
-## 1. Before you write anything
+Before finishing any TypeScript change, do a **readability pass**: reread your diff as if you were a reviewer seeing it cold, and fix anything below.
 
-Inspect the project first. Do not rely on assumptions.
+## 1. Flatten control flow
 
-1. Read `tsconfig.json` (note `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, module settings) and the lint/format config.
-2. Read `package.json`: dependencies, and the scripts for test, lint, and typecheck.
-3. Find how the project already solves your problem (grep for similar code). Reuse its types, utilities, and patterns.
-4. Do not introduce a second pattern for something the project already handles (error modeling, HTTP client, logging, date handling, state, etc.).
-
-Make focused changes. No unrelated refactors, no config changes, and no behavior changes unless asked.
-
-## 2. Type safety rules
-
-- Use `unknown`, not `any`. Narrow before use.
-- Avoid `as` assertions and `!` non-null assertions. If one is genuinely unavoidable, add a one-line comment saying why it is safe.
-- `as` on data from outside the program (JSON, network, storage, `process.env`) is never acceptable. See section 4.
-- Model states so invalid ones are unrepresentable. Prefer discriminated unions over optional-field bags.
-- Add an exhaustiveness check (`never`) when switching over a union.
-- Annotate exported function signatures and other boundaries. Let inference handle local variables.
-- Prefer `satisfies` over `as` when checking a value against a type without widening.
+- Use early returns and guard clauses instead of nesting. Aim for max 2 levels of indentation inside a function.
+- No nested ternaries. Use `if`/`else`, a lookup object, or a small function.
+- Put the happy path at the lowest indentation.
 
 ```ts
-// Bad: optional-field bag allows impossible states
-type Result = { ok: boolean; data?: User; error?: string };
+// Hard to read
+function getDiscount(user: User | null) {
+  if (user) {
+    if (user.isActive) {
+      if (user.orders > 10) {
+        return 0.2;
+      }
+    }
+  }
+  return 0;
+}
 
-// Good: each state carries exactly what it needs
-type Result =
-  | { ok: true; data: User }
-  | { ok: false; error: string };
+// Easy to read
+function getDiscount(user: User | null) {
+  if (!user?.isActive) return 0;
+  if (user.orders <= 10) return 0;
+  return 0.2;
+}
 ```
 
-## 3. Error handling
+## 2. Name things for what they mean
 
-- Follow the project's existing error model (throw vs. Result types). Do not mix them.
-- Never swallow errors with an empty `catch`. Either handle, rethrow, or log with context.
-- When wrapping an error, preserve the original: `new Error("context", { cause: err })`.
-- In `catch`, the error is `unknown`. Narrow it before reading `.message`.
-- Do not add defensive checks for conditions the types or surrounding code already guarantee. Do validate at trust boundaries (section 4).
+- Name by purpose, not type or mechanism: `unpaidInvoices`, not `filteredData` or `list2`.
+- Booleans read as questions: `isExpired`, `hasAccess`, `canRetry`.
+- Functions are verbs, values are nouns. Avoid `handle`, `process`, `doStuff`, `data`, `info`, `util` when something specific fits.
+- Replace magic numbers and strings with named constants, or string-literal unions.
+- Short names (`i`, `e`, `acc`) only for tiny scopes of 3 lines or fewer.
 
-## 4. Validation of untrusted data (STOP AND ASK)
+## 3. Keep functions the right size
 
-**Scope:** structured data crossing a trust boundary: API responses, request bodies, query params, env vars, config files, file contents, `JSON.parse` output, message-queue payloads.
+- One function, one job, describable without "and".
+- Don't split into many tiny one-use helpers either. If a reader must jump between 5 functions to follow one idea, inline some.
+- Extract a function when it has a clear name that is easier to read than the code it replaces.
+- Max about 3 parameters. Beyond that, take one options object with named fields.
+- No boolean flag parameters. `render(true, false)` is unreadable. Use an options object or two functions.
 
-**Out of scope:** trivial local checks such as `typeof x === "string"`, null checks, or narrowing inside already-typed code. Do these freely.
+```ts
+// Unreadable at the call site
+createUser(name, true, false);
 
-Rules:
+// Readable
+createUser({ name, isAdmin: true, sendWelcomeEmail: false });
+```
 
-- TypeScript types do not validate runtime data. A type annotation or `as` cast is not validation.
-- If the project already uses a schema library (Zod, Valibot, io-ts, ArkType, etc.), use it. Never add a second one.
-- If the project has no schema library, **STOP AND ASK** (see section 6) before writing validation. Do not hand-roll validation of structured data by default.
+## 4. Prefer declarative over imperative
 
-## 5. Dependencies and reinventing the wheel
+- **No `for`, `while`, or `do...while` loops.** Use array methods: `map`, `filter`, `flatMap`, `find`, `some`, `every`, `reduce`, and `Object.fromEntries` / `Object.entries` for objects.
+- Pick the most specific method. `some`/`every`/`find` beat `filter(...).length`, and `flatMap` beats `map(...).flat()`.
+- Use `reduce` only when you are really folding a collection into one value (sums, grouping). Don't use it to build arrays or objects that `map`, `filter`, or `Object.fromEntries` express more clearly.
+- Don't mutate in a callback (`forEach` that pushes into an outer array). Return values instead.
+- Keep chains short and readable. When a callback gets long or a chain passes about 3-4 steps, give the steps names: extract a named predicate or mapper, or assign an intermediate result to a well-named `const`.
+- Avoid bitwise tricks, comma operators, or `&&` for side effects.
+- Avoid over-abstraction. No factory, wrapper, or generic helper until there are at least 2-3 real uses.
 
-- Check existing dependencies and utilities before writing common functionality.
-- Prefer built-in language/runtime features for simple needs. Do not add a package for something like a one-line `Array.prototype` operation.
-- For non-trivial common problems (schema validation, date math, retries, parsing, HTTP, CLI args), prefer an established, maintained library over a custom implementation.
-- If no suitable library is installed and one would clearly help, **STOP AND ASK** before adding it or writing a custom substitute.
+```ts
+// Dense: one long expression, no names
+const total = orders.filter(o => o.status === "paid").reduce((s, o) => s + o.items.reduce((t, i) => t + i.price * i.qty, 0), 0);
 
-## 6. How to STOP AND ASK
+// Clear: named steps, still declarative
+const isPaid = (order: Order) => order.status === "paid";
+const lineTotal = (item: OrderItem) => item.price * item.qty;
 
-Both checkpoints (sections 4 and 5) use this format. Keep it short:
+const total = orders
+  .filter(isPaid)
+  .flatMap(order => order.items)
+  .reduce((sum, item) => sum + lineTotal(item), 0);
+```
 
-1. State the decision in one sentence.
-2. Offer 2-3 concrete options, each with a one-line tradeoff.
-3. Give your recommendation and why.
-4. Wait for an answer. Do not proceed with a guess.
+## 5. Comments explain why, not what
 
-Example:
+- Delete comments that restate the code (`// loop over users`, `// increment counter`).
+- Write comments for intent, constraints, workarounds, and non-obvious decisions, e.g. why a retry exists or which bug a check avoids.
+- Don't write JSDoc that just repeats the TypeScript types. Document exported APIs only when behavior isn't obvious from name and signature.
+- If a comment is needed to explain what a block does, first try renaming or extracting instead.
+- No commented-out code.
 
-> This endpoint parses an untrusted JSON body and the project has no schema library. Options: (a) add Zod, the most common choice, with good TS inference; (b) add Valibot, smaller bundle size; (c) hand-written checks, no dependency but more code and drift risk. I recommend (a). Which do you want?
+## 6. Make types help the reader
 
-**If no human can answer** (autonomous or non-interactive run): do not silently decide. Choose the most conventional option, isolate it behind a small module so it is easy to swap, and flag it prominently in your final summary as "decision needing review."
+- Give important shapes a named type or interface instead of repeating inline object types.
+- Prefer discriminated unions over optional-field bags, so states are explicit.
+- Use string-literal unions instead of loose `string` when values are a known set.
+- Let inference handle obvious local types. Annotate exported functions and boundaries so signatures document themselves.
+- Avoid `any`, and avoid `as` and `!` unless you add a short comment on why they're safe.
+- Don't build clever generic or conditional types for readability's sake. If the type needs a paragraph to explain, simplify it.
 
-Never silently bypass a STOP AND ASK checkpoint.
+## 7. Error handling that doesn't bury the logic
 
-## 7. Verification
+- Don't wrap large blocks in `try`/`catch`. Wrap only the call that can fail.
+- No empty `catch`. Handle, rethrow with context, or let it propagate.
+- Don't add defensive checks for cases the types already rule out.
 
-Before declaring work done:
+## 8. Structure and consistency
 
-- Run the project's typecheck (usually a `package.json` script, otherwise `tsc --noEmit`).
-- Run the linter and the relevant tests. Use the project's existing test framework and conventions.
-- Add or update tests for new behavior and edge cases (empty, invalid, boundary inputs). Test observable behavior, not implementation details.
-- If you could not run a check, say so explicitly instead of implying it passed.
+- Order within a file: imports, types/constants, main exports, then helpers. Keep related things close together.
+- One style per file. Follow the surrounding code's naming, formatting, and patterns over your own preference.
+- Prefer `const`. Avoid mutating arguments or hidden side effects, so a function's inputs and outputs are visible in its signature.
+- Keep changes focused. Don't reformat or restructure code unrelated to the task.
 
-## 8. Judgment
+## Readability pass checklist
 
-When these rules and a reasonable engineering call conflict, pick the simplest option that meets the requirements, and say what tradeoff you made. When an ambiguous decision would change a public API or user-visible behavior, ask rather than assume. The STOP AND ASK checkpoints are the only hard rules here. Everything else is guidance.
+Before finishing, check your diff for:
+
+- [ ] Any nesting deeper than 2 levels, or nested ternaries?
+- [ ] Any vague names (`data`, `result`, `handle`, `temp`)?
+- [ ] Any function doing two jobs, or many tiny helpers used once?
+- [ ] Any comment that restates the code?
+- [ ] Any `for`/`while` loop, or a `forEach` that mutates outside state?
+- [ ] Any long chain or dense one-liner that needs named steps?
+- [ ] Any `any`, `as`, or `!` without a reason?
+- [ ] Anything you had to reread to understand? Rewrite it.
+
+If a rule here makes a specific piece of code *less* clear, use judgment and prefer clarity.
