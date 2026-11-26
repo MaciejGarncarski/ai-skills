@@ -1,5 +1,5 @@
 ---
-name: typescript-readability
+name: typescript-engineering
 description: Makes TypeScript code easy to read and maintain. Use this skill whenever you write, modify, refactor, or review TypeScript (.ts, .tsx, .mts, .cts), even for small edits. Covers naming, function shape, control flow, comments, abstraction level, and type-level clarity, with concrete before/after patterns.
 ---
 
