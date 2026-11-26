@@ -1,5 +1,5 @@
 ---
-name: typescript-engineering
+name: typescript-readability
 description: Makes TypeScript code easy to read and maintain. Use this skill whenever you write, modify, refactor, or review TypeScript (.ts, .tsx, .mts, .cts), even for small edits. Covers naming, function shape, control flow, comments, abstraction level, and type-level clarity, with concrete before/after patterns.
 ---
 
@@ -63,6 +63,7 @@ createUser({ name, isAdmin: true, sendWelcomeEmail: false });
 ## 4. Prefer declarative over imperative
 
 - **No `for`, `while`, or `do...while` loops.** Use array methods: `map`, `filter`, `flatMap`, `find`, `some`, `every`, `reduce`, and `Object.fromEntries` / `Object.entries` for objects.
+  - **Exception: test files.** Loops are fine there when they remove duplicated test code (see the `typescript-testing` skill).
 - Pick the most specific method. `some`/`every`/`find` beat `filter(...).length`, and `flatMap` beats `map(...).flat()`.
 - Use `reduce` only when you are really folding a collection into one value (sums, grouping). Don't use it to build arrays or objects that `map`, `filter`, or `Object.fromEntries` express more clearly.
 - Don't mutate in a callback (`forEach` that pushes into an outer array). Return values instead.
